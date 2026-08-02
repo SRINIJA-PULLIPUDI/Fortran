@@ -4,9 +4,10 @@
 # needed at runtime. This lets the whole thing run on a plain free-tier host
 # (e.g. Render) that has no Docker socket available.
 #
-# Submitted code runs as the unprivileged "sandbox" user created below, never
-# as the same user running the Express server, with ulimit-based CPU/memory/
-# process caps and a hard `timeout` wrapper (see codeExecutor.js for details).
+# Submitted code runs as the unprivileged "node" user that ships with this
+# base image (reused as the sandbox user below), never as root -- with
+# ulimit-based CPU/memory/process caps and a hard `timeout` wrapper on top
+# (see codeExecutor.js for details).
 
 FROM node:20-slim
 
@@ -14,8 +15,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     python3 \
     openjdk-17-jdk-headless \
-    && rm -rf /var/lib/apt/lists/* \
-    && useradd -m -u 1000 -s /usr/sbin/nologin sandbox
+    && rm -rf /var/lib/apt/lists/*
+
+# node:20-slim already ships an unprivileged "node" user at uid/gid 1000 --
+# reuse it as the sandbox user instead of creating a new one (which collides
+# with that existing uid). SANDBOX_UID/SANDBOX_GID in codeExecutor.js default
+# to 1000 already, so no other change is needed.
 
 WORKDIR /app
 COPY package*.json ./
