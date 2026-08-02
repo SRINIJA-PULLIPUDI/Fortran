@@ -1,0 +1,68 @@
+version: "3.9"
+
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
+    ports:
+      - "27017:27017"
+
+  # Not a running service -- this just builds and tags the sandbox image
+  # that the backend spawns per submission via `docker run`. It has
+  # `profiles: [build-only]` so plain `docker compose up` skips it; build it
+  # explicitly once with the command in the README before starting the stack.
+  code-runner:
+    build:
+      context: ./backend/docker
+      dockerfile: runner.Dockerfile
+    image: oj-code-runner:latest
+    profiles: ["build-only"]
+
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    depends_on:
+      - mongo
+    environment:
+      MONGO_URI: ${MONGO_URI}
+      CLIENT_ORIGIN: http://localhost:5173
+      CODE_EXEC_TIMEOUT_MS: 5000
+      RUNNER_IMAGE: oj-code-runner:latest
+      DOCKER_MEMORY_LIMIT_MB: 256
+      DOCKER_CPU_LIMIT: "0.5"
+      DOCKER_PIDS_LIMIT: 64
+      SANDBOX_VOLUME_NAME: oj_sandbox_tmp
+      SANDBOX_MOUNT_PATH: /sandbox
+    ports:
+      - "5000:5000"
+    volumes:
+      # Docker-outside-of-Docker: lets the backend launch sibling code-runner
+      # containers on the HOST's Docker daemon.
+      - /var/run/docker.sock:/var/run/docker.sock
+      - oj_uploads:/app/uploads
+      # Shared named volume for submission temp files. A named volume is
+      # visible to any container by NAME regardless of host paths, which is
+      # what makes it work under Docker-outside-of-Docker -- a host bind-mount
+      # path created inside this container would NOT be visible to sibling
+      # containers spawned against the host daemon (see codeExecutor.js).
+      - oj_sandbox_tmp:/sandbox
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: http://localhost:5000/api
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "5173:80"
+
+volumes:
+  mongo_data:
+  oj_uploads:
+  oj_sandbox_tmp:
+    name: oj_sandbox_tmp
