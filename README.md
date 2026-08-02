@@ -1,7 +1,7 @@
 # Fortran — Online Judge
 
 A full-stack online judge platform: solve coding problems, submit solutions
-in Python, C++, Java, or JavaScript, and get graded inside an isolated Docker
+in Python, C++, Java, or JavaScript, and get graded inside a locked-down
 sandbox. Compete in rated contests with a live leaderboard, track progress
 with a submission streak calendar and a contest rating history graph, and
 race against a real async judging queue built to handle many simultaneous
@@ -11,9 +11,9 @@ submissions.
 
 - **User accounts** with JWT authentication
 - **Practice problems** with per-problem test cases and real acceptance-rate stats
-- **Docker-sandboxed code execution** — every submission compiles and runs
-  inside a disposable, network-isolated, memory- and CPU-capped container
-  (no network access, non-root user, destroyed immediately after use)
+- **Sandboxed code execution** — every submission compiles and runs as an
+  unprivileged OS subprocess, capped on CPU time and memory, and killed by a
+  hard timeout if it runs too long
 - **Async submission queue** to absorb bursts of simultaneous submissions
   without overloading the judge
 - **Run vs. Submit** — test code against custom input without it counting as
@@ -34,7 +34,10 @@ submissions.
 
 - **Frontend:** React (Vite), React Router, Recharts
 - **Backend:** Node.js, Express, MongoDB (Mongoose)
-- **Code execution:** Docker (a dedicated `oj-code-runner` sandbox image)
+- **Code execution:** unprivileged OS subprocesses (Python3 / g++ / OpenJDK /
+  Node) with `ulimit`-based CPU and memory caps and a hard `timeout`
+  wrapper — no Docker daemon required at runtime, so it runs on plain
+  free-tier hosts (see [Architecture](#architecture) below)
 - **Auth:** JWT + bcrypt
 
 ## Architecture
@@ -45,51 +48,57 @@ Fortran/
   frontend/   React (Vite) single-page app
 ```
 
-Submissions are evaluated by spawning short-lived Docker containers rather
-than running arbitrary user code on the host — each submission gets its own
-container with `--network none`, a memory cap, a CPU cap, a process-count
-cap, and a non-root user, and the container is destroyed immediately on
-exit. Because the backend can itself run inside a container (see the Docker
-Compose setup below), submission files are shared with sandbox containers
-through a named Docker volume rather than a host bind mount, which is what
-makes this work correctly under Docker-outside-of-Docker.
+Submissions are evaluated by `backend/services/codeExecutor.js`, which runs
+each submission's compile/run step directly inside the backend's own
+container as a subprocess, executed as the unprivileged `node` user (never
+the same user the Express server itself runs as). Each run is wrapped with:
+
+- `ulimit -t` (CPU time) and `ulimit -v` (virtual memory) caps
+- `ulimit -f` to cap how much a submission can write to disk
+- a `timeout` wrapper enforcing the problem's time limit, plus a Node-side
+  `SIGKILL` safety net in case that doesn't fire
+- its own throwaway temp directory per submission, deleted after grading
+
+This intentionally trades some isolation for portability: it needs nothing
+beyond Node + the language runtimes installed in the image (see
+`backend/Dockerfile`), so it runs on any host that can run a Docker image —
+including free-tier PaaS platforms (Render, etc.) that don't expose a Docker
+daemon to the app itself. It is **not** the same level of isolation as
+running each submission in its own disposable container (there's no network
+or filesystem namespace isolation beyond normal OS user permissions) — a
+reasonable fit for a personal/academic deployment, but worth hardening
+before judging fully adversarial submissions at public scale. See
+[Known limitations](#known-limitations).
+
+> An earlier version of this project ran each submission inside a disposable
+> Docker container via `docker run` (see git history / the code comments in
+> `codeExecutor.js`). That approach is more isolated, but requires a host
+> with a reachable Docker daemon, which most managed free-tier platforms
+> don't provide to the application container. The `docker-compose.yml` and
+> `backend/docker/runner.Dockerfile` files are kept for reference/local
+> experimentation but are not part of the current deployment path.
 
 ## Prerequisites
 
 - Node.js 18+
-- Docker Desktop (Mac/Windows) or Docker Engine (Linux) — required, since
-  all code execution happens in containers
-- MongoDB (local, MongoDB Atlas, or the bundled `docker-compose` service)
+- MongoDB (local or MongoDB Atlas)
+- Python 3, g++, and a JDK available on `PATH` if running the backend
+  directly on your host (`backend/Dockerfile` installs these automatically
+  if you run the backend as a container instead)
 
 ## Getting started
 
-### 1. Build the sandbox image (required once)
+### Run the backend + frontend
 
 ```bash
 git clone <this-repo-url>
 cd Fortran
-docker build -t oj-code-runner:latest -f backend/docker/runner.Dockerfile backend/docker
-```
 
-### 2. Run the stack
-
-**Option A — everything in Docker:**
-
-```bash
-docker compose up --build
-docker compose exec backend npm run seed   # creates a sample admin account + 2 problems
-```
-
-Then open `http://localhost:5173`.
-
-**Option B — Node on the host, Docker only for the sandbox:**
-
-```bash
 # Backend
 cd backend
 cp .env.example .env   # fill in MONGO_URI and JWT_SECRET
 npm install
-npm run seed
+npm run seed            # creates a sample admin account + 2 problems
 npm run dev
 
 # Frontend (separate terminal)
@@ -97,6 +106,17 @@ cd frontend
 cp .env.example .env
 npm install
 npm run dev
+```
+
+Then open `http://localhost:5173`.
+
+If you'd rather run the backend as a container (which bundles Python/g++/JDK
+for you automatically), build and run `backend/Dockerfile` directly:
+
+```bash
+cd backend
+docker build -t fortran-backend .
+docker run --env-file .env -p 5000:5000 fortran-backend
 ```
 
 ### Environment variables
@@ -109,19 +129,16 @@ npm run dev
 | `JWT_SECRET` | Secret used to sign auth tokens |
 | `PORT` | API server port (default 5000) |
 | `CLIENT_ORIGIN` | Allowed frontend origin(s) for CORS |
-| `CODE_EXEC_TIMEOUT_MS` | Per-test-case execution timeout |
-| `RUNNER_IMAGE` | Sandbox image tag (default `oj-code-runner:latest`) |
-| `DOCKER_MEMORY_LIMIT_MB` / `DOCKER_CPU_LIMIT` / `DOCKER_PIDS_LIMIT` | Sandbox container resource limits |
+| `CODE_EXEC_TIMEOUT_MS` | Default per-test-case execution timeout |
+| `SANDBOX_MEMORY_LIMIT_MB` | Virtual memory cap per submission (default 256) |
+| `SANDBOX_MAX_FILE_KB` | Max bytes a submission may write to disk (default 51200) |
+| `SANDBOX_UID` / `SANDBOX_GID` | OS user/group submissions run as (default 1000, the built-in `node` user in `backend/Dockerfile`) |
 
 **`frontend/.env`**
 
 | Variable | Description |
 |---|---|
 | `VITE_API_URL` | Base URL of the backend API |
-
-When running via `docker-compose.yml`, set `JWT_SECRET` in a `.env` file at
-the project root (used for variable substitution in the compose file) rather
-than in `backend/.env`, which the containerized backend does not read.
 
 ## API overview
 
@@ -151,11 +168,12 @@ All endpoints are prefixed with `/api`.
 ## Deployment
 
 - **Frontend:** any static host (Vercel, Netlify) that can build a Vite app.
-- **Backend:** needs a host with a real Docker daemon available to it — a
-  small VM (DigitalOcean, Linode, Lightsail) with Docker installed works
-  well with `docker compose up -d`. Serverless/managed-container platforms
-  generally do not expose a Docker daemon to your container and will not be
-  able to run the sandbox.
+- **Backend:** any host that can build and run `backend/Dockerfile` — no
+  Docker daemon needs to be reachable from inside the app itself, since code
+  execution now happens as sandboxed subprocesses in the same container.
+  This is what makes it deployable on free-tier platforms like Render
+  (deploy it as a Docker-based web service, not the auto-detected Node
+  runtime, so the image actually installs Python/g++/JDK).
 - **Database:** MongoDB Atlas (free tier is sufficient for light use).
 
 ## Known limitations
@@ -165,10 +183,17 @@ All endpoints are prefixed with `/api`.
   copy-paste and light edits, less so against heavily restructured code.
 - Contest screen recording is not enforced server-side; a submission is not
   blocked if no active recording exists.
-- Sandbox isolation uses standard Docker containers, not a stronger
-  isolation layer (gVisor/Firecracker) — sufficient for a learning/portfolio
-  deployment, worth upgrading before handling adversarial, high-stakes
-  submissions at scale.
+- Sandbox isolation is OS-user + `ulimit`-based, not container/VM-level
+  isolation — there's no network or filesystem namespace isolation beyond
+  standard Unix permissions. Sufficient for a learning/portfolio deployment
+  with trusted-ish users; worth upgrading to per-submission containers or a
+  stronger isolation layer (gVisor/Firecracker) plus network isolation
+  before handling adversarial, high-stakes submissions at public scale.
+- Process-count limiting (fork-bomb protection via `ulimit -u`) is
+  intentionally not used — on shared multi-tenant hosts without
+  per-container user-namespace isolation, that limit is tracked at the host
+  level and gets exhausted by unrelated processes, causing false failures.
+  The CPU-time and wall-clock `timeout` caps still bound worst-case impact.
 
 ## License
 
