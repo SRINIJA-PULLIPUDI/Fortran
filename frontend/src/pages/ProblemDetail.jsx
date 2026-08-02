@@ -33,13 +33,21 @@ export default function ProblemDetail() {
   const [customInput, setCustomInput] = useState('');
   const [runOutput, setRunOutput] = useState(null);
   const [running, setRunning] = useState(false);
+  const [loadError, setLoadError] = useState('');
 
   useEffect(() => {
-    api.get(`/problems/${code}`).then((res) => {
-      setProblem(res.data.problem);
-      setSamples(res.data.samples);
-      if (res.data.samples[0]) setCustomInput(res.data.samples[0].input);
-    });
+    setProblem(null);
+    setLoadError('');
+    api
+      .get(`/problems/${code}`)
+      .then((res) => {
+        setProblem(res.data.problem);
+        setSamples(res.data.samples);
+        if (res.data.samples[0]) setCustomInput(res.data.samples[0].input);
+      })
+      .catch((err) => {
+        setLoadError(err.response?.data?.message || 'Problem not found');
+      });
     return () => clearInterval(pollRef.current);
   }, [code]);
 
@@ -99,6 +107,7 @@ export default function ProblemDetail() {
     }
   }
 
+  if (loadError) return <div className="page error">{loadError}</div>;
   if (!problem) return <div className="page">Loading...</div>;
 
   const isFailure = verdict && !['Queued', 'Running', 'Accepted'].includes(verdict.verdict);

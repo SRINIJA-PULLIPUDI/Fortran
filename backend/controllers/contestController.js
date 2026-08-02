@@ -6,7 +6,9 @@ const { computeRatingUpdates } = require('../utils/rating');
 // GET /api/contests
 async function listContests(req, res, next) {
   try {
-    const contests = await Contest.find().sort({ startTime: -1 });
+    const contests = await Contest.find()
+      .populate('problems', 'name code difficulty')
+      .sort({ startTime: -1 });
     res.json({ contests });
   } catch (err) {
     next(err);
