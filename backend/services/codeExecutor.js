@@ -14,8 +14,7 @@
  *  - a dedicated unprivileged OS user ("sandbox", created in the
  *    Dockerfile) that submitted code runs as -- never the same user as the
  *    Express server itself
- *  - `ulimit` caps on CPU time, virtual memory, max file size, and number
- *    of processes (blocks fork bombs)
+ *  - `ulimit` caps on CPU time, virtual memory, and max file size
  *  - a hard `timeout` wrapper around the actual run, plus a Node-side
  *    SIGKILL safety net in case that somehow doesn't fire
  *  - each submission gets its own throwaway temp directory, deleted after
@@ -39,7 +38,6 @@ const { v4: uuidv4 } = require('uuid');
 
 const TIMEOUT_MS = Number(process.env.CODE_EXEC_TIMEOUT_MS || 5000);
 const MEMORY_LIMIT_MB = Number(process.env.SANDBOX_MEMORY_LIMIT_MB || 256);
-const PIDS_LIMIT = Number(process.env.SANDBOX_PIDS_LIMIT || 32);
 const MAX_FILE_SIZE_KB = Number(process.env.SANDBOX_MAX_FILE_KB || 51200); // 50MB
 
 // UID/GID of the unprivileged user created in the Dockerfile. The Express
@@ -91,12 +89,18 @@ function cleanupWorkDir(writePath) {
 
 // Wraps `cmd` with ulimit guards executed in the same shell, so they apply
 // to the process (and its children) that `exec`s into `cmd`.
+// NOTE: we deliberately do NOT set `ulimit -u` (RLIMIT_NPROC / process-count
+// cap) here. On shared multi-tenant hosts without per-container user
+// namespace isolation (common on PaaS free tiers), that limit is tracked
+// against the UID at the *host* level rather than scoped to this container,
+// so a small cap gets exhausted by unrelated processes from other tenants
+// and causes spurious "fork: Resource temporarily unavailable" failures
+// before user code even runs. CPU time (-t) and virtual memory (-v) are
+// enforced per-process instead, so they don't have this problem, and the
+// outer `timeout` wrapper still bounds worst-case damage from something
+// like a fork bomb to the wall-clock time limit.
 function wrapWithLimits(cmd, { timeoutSecs, skipMemLimit }) {
-  const limits = [
-    `ulimit -f ${MAX_FILE_SIZE_KB}`,
-    `ulimit -u ${PIDS_LIMIT}`,
-    `ulimit -t ${timeoutSecs + 2}`,
-  ];
+  const limits = [`ulimit -f ${MAX_FILE_SIZE_KB}`, `ulimit -t ${timeoutSecs + 2}`];
   if (!skipMemLimit) limits.push(`ulimit -v ${MEMORY_LIMIT_MB * 1024}`);
   return `${limits.join('; ')}; exec ${cmd}`;
 }
