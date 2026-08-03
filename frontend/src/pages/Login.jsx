@@ -36,7 +36,6 @@ export default function Login() {
       <p>
         No account? <Link to="/register">Sign up</Link>
       </p>
-      <p className="hint">Seeded admin account: userId <code>admin</code> / password <code>Admin@123</code></p>
     </div>
   );
 }

@@ -33,7 +33,9 @@ async function seed() {
       code: 'SUM-TWO',
       difficulty: 'Easy',
       tags: ['math', 'basics'],
+      hints: ['Read both integers with a single input() / cin call.'],
       isPractice: true,
+      number: 1,
       createdBy: admin._id,
     });
     await TestCase.insertMany([
@@ -53,7 +55,9 @@ async function seed() {
       code: 'REVERSE-STR',
       difficulty: 'Easy',
       tags: ['strings'],
+      hints: ['Most languages have a built-in way to reverse a sequence -- you rarely need to write the loop by hand.'],
       isPractice: true,
+      number: 2,
       createdBy: admin._id,
     });
     await TestCase.insertMany([

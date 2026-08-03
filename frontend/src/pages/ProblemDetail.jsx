@@ -15,8 +15,33 @@ const TRACE_STEPS = {
   Running: 'Building sandbox container and running test cases...',
 };
 
+function HintsPanel({ hints }) {
+  const [revealed, setRevealed] = useState([]);
+
+  function reveal(i) {
+    setRevealed((r) => (r.includes(i) ? r : [...r, i]));
+  }
+
+  return (
+    <div style={{ marginTop: 14, marginBottom: 14 }}>
+      <h4 className="section-label">Hints</h4>
+      {hints.map((h, i) =>
+        revealed.includes(i) ? (
+          <p key={i} className="hint" style={{ marginBottom: 6 }}>
+            {h}
+          </p>
+        ) : (
+          <button key={i} type="button" className="ghost" style={{ marginRight: 8, marginTop: 0 }} onClick={() => reveal(i)}>
+            Show hint {i + 1}
+          </button>
+        )
+      )}
+    </div>
+  );
+}
+
 export default function ProblemDetail() {
-  const { code } = useParams();
+  const { code, id: contestId } = useParams();
   const [problem, setProblem] = useState(null);
   const [samples, setSamples] = useState([]);
   const [language, setLanguage] = useState('python');
@@ -86,7 +111,7 @@ export default function ProblemDetail() {
     setTrace(['> submitting solution...']);
     setSubmitting(true);
     try {
-      const res = await api.post('/submissions', { problemCode: code, language, code: source });
+      const res = await api.post('/submissions', { problemCode: code, language, code: source, contestId: contestId || undefined });
       const submissionId = res.data.submissionId;
       pushTrace('> queued (id ' + submissionId.slice(-6) + ')');
 
@@ -156,11 +181,27 @@ export default function ProblemDetail() {
       ) : (
         <div className="problem-detail-grid">
           <div>
+            {contestId && (
+              <p className="hint" style={{ marginBottom: 10 }}>
+                Solving as part of a live contest — topic tags and hints stay hidden until the contest ends.
+              </p>
+            )}
             <div className="problem-header">
               <h2 style={{ marginBottom: 0 }}>{problem.name}</h2>
               <span className={`badge badge-${problem.difficulty?.toLowerCase()}`}>{problem.difficulty}</span>
             </div>
+            {problem.tags?.length > 0 && (
+              <div className="btn-row" style={{ marginTop: 8 }}>
+                {problem.tags.map((t) => (
+                  <span key={t} className="badge badge-outline">
+                    {t}
+                  </span>
+                ))}
+              </div>
+            )}
             <p className="statement">{problem.statement}</p>
+
+            {problem.hints?.length > 0 && <HintsPanel hints={problem.hints} />}
 
             <h4 className="section-label">Sample I/O</h4>
             {samples.map((s, i) => (

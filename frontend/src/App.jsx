@@ -85,6 +85,16 @@ export default function App() {
         }
       />
       <Route
+        path="/contests/:id/problems/:code"
+        element={
+          <PrivateRoute>
+            <AppShell>
+              <ProblemDetail />
+            </AppShell>
+          </PrivateRoute>
+        }
+      />
+      <Route
         path="/contests/:id"
         element={
           <PrivateRoute>

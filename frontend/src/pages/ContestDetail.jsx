@@ -74,9 +74,11 @@ export default function ContestDetail() {
       <h4 className="section-label">Problems</h4>
       <div className="table-card">
         <ul className="solved-list">
-          {(contest.problems || []).map((p) => (
+          {(contest.problems || []).map((p, idx) => (
             <li key={p._id || p}>
-              <Link to={`/problems/${p.code || p}`}>{p.name || p}</Link>
+              <Link to={`/contests/${id}/problems/${p.code || p}`}>
+                {idx + 1}. {p.name || p}
+              </Link>
             </li>
           ))}
         </ul>

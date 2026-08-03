@@ -11,6 +11,9 @@ export default function ProblemList() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [query, setQuery] = useState(searchParams.get('q') || '');
   const [difficulty, setDifficulty] = useState('All');
+  const [tagFilter, setTagFilter] = useState('');
+  const [minAcceptance, setMinAcceptance] = useState('');
+  const [numberFilter, setNumberFilter] = useState('');
 
   useEffect(() => {
     api
@@ -19,15 +22,41 @@ export default function ProblemList() {
       .catch((err) => setError(err.response?.data?.message || 'Failed to load problems'));
   }, []);
 
+  const allTags = useMemo(() => {
+    const set = new Set();
+    problems.forEach((p) => (p.tags || []).forEach((t) => set.add(t)));
+    return Array.from(set).sort();
+  }, [problems]);
+
   const filtered = useMemo(() => {
     return problems.filter((p) => {
       const matchesQuery = !query || p.name.toLowerCase().includes(query.toLowerCase()) || p.code.toLowerCase().includes(query.toLowerCase());
       const matchesDifficulty = difficulty === 'All' || p.difficulty === difficulty;
-      return matchesQuery && matchesDifficulty;
+      const matchesTag = !tagFilter || (p.tags || []).includes(tagFilter);
+      const matchesAcceptance = !minAcceptance || (p.acceptanceRate !== null && p.acceptanceRate >= Number(minAcceptance));
+      const matchesNumber = !numberFilter || String(p.number) === numberFilter.trim();
+      return matchesQuery && matchesDifficulty && matchesTag && matchesAcceptance && matchesNumber;
     });
-  }, [problems, query, difficulty]);
+  }, [problems, query, difficulty, tagFilter, minAcceptance, numberFilter]);
 
   const solvedCount = problems.filter((p) => p.solvedByMe).length;
+
+  function clearFilters() {
+    setQuery('');
+    setSearchParams({});
+    setDifficulty('All');
+    setTagFilter('');
+    setMinAcceptance('');
+    setNumberFilter('');
+  }
+
+  const inputStyle = {
+    padding: '9px 12px',
+    borderRadius: 8,
+    border: '1px solid var(--border)',
+    background: 'var(--surface)',
+    color: 'var(--text)',
+  };
 
   return (
     <div className="page wide">
@@ -40,27 +69,52 @@ export default function ProblemList() {
       <div className="table-card" style={{ padding: 18, marginBottom: 18 }}>
         <div className="btn-row" style={{ flexWrap: 'wrap' }}>
           <input
-            placeholder="Search problems..."
+            placeholder="Search by name or code..."
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);
               setSearchParams(e.target.value ? { q: e.target.value } : {});
             }}
-            style={{
-              flex: 1,
-              minWidth: 200,
-              padding: '9px 12px',
-              borderRadius: 8,
-              border: '1px solid var(--border)',
-              background: 'var(--surface)',
-              color: 'var(--text)',
-            }}
+            style={{ ...inputStyle, flex: 2, minWidth: 200 }}
           />
           {DIFFICULTIES.map((d) => (
             <button key={d} className={d === difficulty ? '' : 'ghost'} onClick={() => setDifficulty(d)} style={{ marginTop: 0 }}>
               {d}
             </button>
           ))}
+        </div>
+
+        <div className="btn-row" style={{ flexWrap: 'wrap', marginTop: 10 }}>
+          <select value={tagFilter} onChange={(e) => setTagFilter(e.target.value)} style={{ ...inputStyle, minWidth: 160 }}>
+            <option value="">All topics</option>
+            {allTags.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
+          <input
+            type="number"
+            min="0"
+            max="100"
+            placeholder="Min acceptance %"
+            value={minAcceptance}
+            onChange={(e) => setMinAcceptance(e.target.value)}
+            style={{ ...inputStyle, width: 160 }}
+          />
+          <input
+            type="number"
+            min="1"
+            placeholder="Problem #"
+            value={numberFilter}
+            onChange={(e) => setNumberFilter(e.target.value)}
+            style={{ ...inputStyle, width: 120 }}
+          />
+          {(tagFilter || minAcceptance || numberFilter || query || difficulty !== 'All') && (
+            <button className="ghost" style={{ marginTop: 0 }} onClick={clearFilters}>
+              Clear filters
+            </button>
+          )}
         </div>
       </div>
 
@@ -69,6 +123,7 @@ export default function ProblemList() {
           <thead>
             <tr>
               <th></th>
+              <th>#</th>
               <th>Problem</th>
               <th>Difficulty</th>
               <th>Acceptance</th>
@@ -79,6 +134,7 @@ export default function ProblemList() {
             {filtered.map((p) => (
               <tr key={p._id}>
                 <td style={{ width: 24 }}>{p.solvedByMe && <Check size={16} color="var(--pass)" />}</td>
+                <td className="muted">{p.number}</td>
                 <td>
                   <Link to={`/problems/${p.code}`}>{p.name}</Link>
                 </td>
@@ -93,7 +149,7 @@ export default function ProblemList() {
         </table>
         {filtered.length === 0 && (
           <p className="empty-state">
-            {problems.length === 0 ? 'No problems yet. An admin can add one from the sidebar.' : 'No problems match your search.'}
+            {problems.length === 0 ? 'No problems yet. An admin can add one from the sidebar.' : 'No problems match your filters.'}
           </p>
         )}
       </div>

@@ -5,7 +5,7 @@ import api from '../api/client';
 const emptyTestCase = { input: '', output: '', isSample: false };
 
 export default function CreateProblem() {
-  const [form, setForm] = useState({ name: '', code: '', difficulty: 'Easy', tags: '', statement: '' });
+  const [form, setForm] = useState({ name: '', code: '', difficulty: 'Easy', tags: '', hints: '', statement: '' });
   const [testCases, setTestCases] = useState([{ ...emptyTestCase, isSample: true }, { ...emptyTestCase }]);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -37,6 +37,7 @@ export default function CreateProblem() {
         code: form.code,
         difficulty: form.difficulty,
         tags: form.tags.split(',').map((t) => t.trim()).filter(Boolean),
+        hints: form.hints.split('\n').map((h) => h.trim()).filter(Boolean),
         statement: form.statement,
         isPractice: true,
         testCases,
@@ -65,6 +66,14 @@ export default function CreateProblem() {
         </select>
         <label>Tags (comma separated)</label>
         <input value={form.tags} onChange={update('tags')} placeholder="math, strings" />
+        <label>Hints (one per line, optional)</label>
+        <textarea
+          className="statement-input"
+          value={form.hints}
+          onChange={update('hints')}
+          rows={3}
+          placeholder={'Think about using a hash map.\nWatch out for negative numbers.'}
+        />
         <label>Statement</label>
         <textarea className="statement-input" value={form.statement} onChange={update('statement')} rows={5} required />
 
