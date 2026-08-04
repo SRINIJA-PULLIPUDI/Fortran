@@ -18,6 +18,7 @@ import Leaderboard from './pages/Leaderboard';
 import Submissions from './pages/Submissions';
 import CreateContest from './pages/CreateContest';
 import CreateProblem from './pages/CreateProblem';
+import EditProblem from './pages/EditProblem';
 
 // Pages that make sense both logged in (sidebar shell) and logged out
 // (public top nav) -- problem list, contest list, leaderboard, profiles.
@@ -130,6 +131,16 @@ export default function App() {
           <AdminRoute>
             <AppShell>
               <CreateProblem />
+            </AppShell>
+          </AdminRoute>
+        }
+      />
+      <Route
+        path="/admin/edit-problem/:code"
+        element={
+          <AdminRoute>
+            <AppShell>
+              <EditProblem />
             </AppShell>
           </AdminRoute>
         }

@@ -12,7 +12,12 @@ async function getGlobalLeaderboard(req, res, next) {
     // Rank needs to be computed across the full user base (rating alone
     // isn't a unique sort key), so fetch everyone, sort with the full
     // tiebreak rule in application code, then slice to `limit`.
-    const users = await User.find().select('fullName userId contestRating problemsSolved acceptedSubmissions totalSubmissions');
+    // Admin accounts are problem setters, not competitors -- they can still
+    // solve problems (useful for testing), but never appear on a public
+    // leaderboard.
+    const users = await User.find({ role: { $ne: 'admin' } }).select(
+      'fullName userId contestRating problemsSolved acceptedSubmissions totalSubmissions'
+    );
 
     const ranked = users
       .map((u) => ({

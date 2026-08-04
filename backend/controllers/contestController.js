@@ -116,13 +116,17 @@ async function getLeaderboard(req, res, next) {
   try {
     const contestId = req.params.id;
     const submissions = await Submission.find({ contest: contestId, verdict: 'Accepted' })
-      .populate('user', 'fullName userId contestRating acceptedSubmissions totalSubmissions')
+      .populate('user', 'fullName userId contestRating acceptedSubmissions totalSubmissions role')
       .populate('problem', 'name code')
       .sort({ createdAt: 1 });
 
-    // First accepted submission per (user, problem) counts
+    // First accepted submission per (user, problem) counts. Admin accounts
+    // (problem setters) can still solve problems for testing, but never
+    // show up on a leaderboard -- it doesn't make sense to rank the person
+    // who wrote the problems against the people solving them.
     const bestByUserProblem = new Map();
     for (const s of submissions) {
+      if (s.user.role === 'admin') continue;
       const key = `${s.user._id}_${s.problem._id}`;
       if (!bestByUserProblem.has(key)) bestByUserProblem.set(key, s);
     }
@@ -165,16 +169,18 @@ async function finalizeContest(req, res, next) {
     const contest = await Contest.findById(req.params.id);
     if (!contest) return res.status(404).json({ message: 'Contest not found' });
 
-    const submissions = await Submission.find({ contest: contest._id, verdict: 'Accepted' });
+    const submissions = await Submission.find({ contest: contest._id, verdict: 'Accepted' }).populate('user', 'role');
     const solvedByUser = new Map();
     submissions.forEach((s) => {
-      const uid = String(s.user);
+      if (s.user.role === 'admin') return; // problem setters aren't rated participants
+      const uid = String(s.user._id);
       solvedByUser.set(uid, (solvedByUser.get(uid) || 0) + 1);
     });
 
+    const totalProblems = contest.problems.length;
     const standings = Array.from(solvedByUser.entries())
       .sort((a, b) => b[1] - a[1])
-      .map(([userId], idx) => ({ userId, rank: idx + 1 }));
+      .map(([userId, solved], idx) => ({ userId, rank: idx + 1, solved, totalProblems }));
 
     const users = await User.find({ _id: { $in: standings.map((s) => s.userId) } });
     const currentRatings = new Map(users.map((u) => [String(u._id), u.contestRating]));

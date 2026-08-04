@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import api from '../api/client';
 import { useAuth } from '../context/AuthContext';
-import ScreenRecorder from '../components/ScreenRecorder';
 
 export default function ContestDetail() {
   const { id } = useParams();
@@ -69,15 +68,13 @@ export default function ContestDetail() {
       </div>
       {finalizeMsg && <p className="hint">{finalizeMsg}</p>}
 
-      {joined && contest.status === 'Live' && <ScreenRecorder contestId={contest._id} />}
-
       <h4 className="section-label">Problems</h4>
       <div className="table-card">
         <ul className="solved-list">
           {(contest.problems || []).map((p, idx) => (
             <li key={p._id || p}>
-              <Link to={`/contests/${id}/problems/${p.code || p}`}>
-                {idx + 1}. {p.name || p}
+              <Link to={`/contests/${id}/problems/${p.code || p}?q=${idx + 1}`}>
+                Q{idx + 1}. {p.name || p}
               </Link>
             </li>
           ))}

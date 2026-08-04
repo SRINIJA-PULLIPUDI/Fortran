@@ -26,7 +26,7 @@ const FEATURES = [
   {
     icon: Video,
     title: 'Contest Integrity',
-    desc: 'Screen recording during rated contests plus similarity-based plagiarism detection across submissions to the same problem.',
+    desc: 'Similarity-based plagiarism detection across submissions to the same contest problem.',
   },
   {
     icon: Users,

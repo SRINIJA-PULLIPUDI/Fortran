@@ -9,7 +9,6 @@ const problemRoutes = require('./routes/problemRoutes');
 const submissionRoutes = require('./routes/submissionRoutes');
 const contestRoutes = require('./routes/contestRoutes');
 const profileRoutes = require('./routes/profileRoutes');
-const recordingRoutes = require('./routes/recordingRoutes');
 const leaderboardRoutes = require('./routes/leaderboardRoutes');
 
 const app = express();
@@ -30,7 +29,6 @@ app.use('/api/problems', problemRoutes);
 app.use('/api/submissions', submissionRoutes);
 app.use('/api/contests', contestRoutes);
 app.use('/api/profile', profileRoutes);
-app.use('/api/recordings', recordingRoutes);
 app.use('/api/leaderboard', leaderboardRoutes);
 
 app.use(notFound);

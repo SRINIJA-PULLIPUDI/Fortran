@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api/client';
 
@@ -21,6 +21,11 @@ function blankNewProblem() {
 // isPractice: false and stay off the public Problems list (tags/hints
 // withheld too) until the contest is finalized, at which point they're
 // promoted in with continued sequential numbering.
+//
+// NOTE: the fields below are wrapped in a div with the "form" class (not a
+// nested <form> -- forms can't nest in valid HTML) purely to pick up the
+// same label/input flex-column layout rules as the outer form. Without it,
+// labels and inputs fall back to their default inline flow and overlap.
 function NewProblemEditor({ draft, onChange, onRemove, index }) {
   function update(field, value) {
     onChange({ ...draft, [field]: value });
@@ -44,65 +49,63 @@ function NewProblemEditor({ draft, onChange, onRemove, index }) {
         </button>
       </div>
 
-      <label>Name</label>
-      <input value={draft.name} onChange={(e) => update('name', e.target.value)} required />
-      <label>Code (short slug, e.g. TWO-SUM)</label>
-      <input value={draft.code} onChange={(e) => update('code', e.target.value)} required />
-      <label>Difficulty</label>
-      <select value={draft.difficulty} onChange={(e) => update('difficulty', e.target.value)}>
-        <option>Easy</option>
-        <option>Medium</option>
-        <option>Hard</option>
-      </select>
-      <label>Tags (comma separated — hidden until the contest ends)</label>
-      <input value={draft.tags} onChange={(e) => update('tags', e.target.value)} placeholder="math, strings" />
-      <label>Hints (one per line, optional — hidden until the contest ends)</label>
-      <textarea className="statement-input" value={draft.hints} onChange={(e) => update('hints', e.target.value)} rows={2} />
-      <label>Statement</label>
-      <textarea className="statement-input" value={draft.statement} onChange={(e) => update('statement', e.target.value)} rows={4} required />
+      <div className="form">
+        <label>Name</label>
+        <input value={draft.name} onChange={(e) => update('name', e.target.value)} required />
+        <label>Code (short slug, e.g. TWO-SUM)</label>
+        <input value={draft.code} onChange={(e) => update('code', e.target.value)} required />
+        <label>Difficulty</label>
+        <select value={draft.difficulty} onChange={(e) => update('difficulty', e.target.value)}>
+          <option>Easy</option>
+          <option>Medium</option>
+          <option>Hard</option>
+        </select>
+        <label>Tags (comma separated — hidden until the contest ends)</label>
+        <input value={draft.tags} onChange={(e) => update('tags', e.target.value)} placeholder="math, strings" />
+        <label>Hints (one per line, optional — hidden until the contest ends)</label>
+        <textarea value={draft.hints} onChange={(e) => update('hints', e.target.value)} rows={2} />
+        <label>Statement</label>
+        <textarea value={draft.statement} onChange={(e) => update('statement', e.target.value)} rows={4} required />
 
-      <label>Test Cases</label>
-      {draft.testCases.map((tc, idx) => (
-        <div key={idx} className="testcase-row">
-          <textarea placeholder="input" value={tc.input} onChange={(e) => updateTestCase(idx, 'input', e.target.value)} rows={2} required />
-          <textarea placeholder="expected output" value={tc.output} onChange={(e) => updateTestCase(idx, 'output', e.target.value)} rows={2} required />
-          <label className="checkbox-row inline">
-            <input type="checkbox" checked={tc.isSample} onChange={(e) => updateTestCase(idx, 'isSample', e.target.checked)} />
-            sample
-          </label>
-          {draft.testCases.length > 1 && (
-            <button type="button" className="link-btn danger" onClick={() => removeTestCase(idx)}>
-              remove
-            </button>
-          )}
-        </div>
-      ))}
-      <button type="button" className="secondary" onClick={addTestCase}>
-        + Add test case
-      </button>
+        <label>Test Cases</label>
+        {draft.testCases.map((tc, idx) => (
+          <div key={idx} className="testcase-row">
+            <textarea placeholder="input" value={tc.input} onChange={(e) => updateTestCase(idx, 'input', e.target.value)} rows={2} required />
+            <textarea
+              placeholder="expected output"
+              value={tc.output}
+              onChange={(e) => updateTestCase(idx, 'output', e.target.value)}
+              rows={2}
+              required
+            />
+            <label className="checkbox-row inline">
+              <input type="checkbox" checked={tc.isSample} onChange={(e) => updateTestCase(idx, 'isSample', e.target.checked)} />
+              sample
+            </label>
+            {draft.testCases.length > 1 && (
+              <button type="button" className="link-btn danger" onClick={() => removeTestCase(idx)}>
+                remove
+              </button>
+            )}
+          </div>
+        ))}
+        <button type="button" className="secondary" onClick={addTestCase}>
+          + Add test case
+        </button>
+      </div>
     </div>
   );
 }
 
 export default function CreateContest() {
   const [form, setForm] = useState({ title: '', description: '', startTime: '', endTime: '', isRated: true });
-  const [problems, setProblems] = useState([]);
-  const [selectedProblems, setSelectedProblems] = useState([]);
-  const [newProblems, setNewProblems] = useState([]);
+  const [newProblems, setNewProblems] = useState([blankNewProblem()]);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const navigate = useNavigate();
 
-  useEffect(() => {
-    api.get('/problems').then((res) => setProblems(res.data.problems));
-  }, []);
-
   function update(field) {
     return (e) => setForm({ ...form, [field]: e.target.value });
-  }
-
-  function toggleProblem(id) {
-    setSelectedProblems((prev) => (prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]));
   }
 
   function addNewProblem() {
@@ -125,7 +128,7 @@ export default function CreateContest() {
         description: form.description,
         startTime: new Date(form.startTime).toISOString(),
         endTime: new Date(form.endTime).toISOString(),
-        problems: selectedProblems,
+        problems: [],
         isRated: form.isRated,
         newProblems: newProblems.map((p) => ({
           name: p.name,
@@ -163,21 +166,10 @@ export default function CreateContest() {
           Rated contest (affects participants' contest rating when finalized)
         </label>
 
-        <label>Existing problems from the practice bank</label>
-        <div className="checkbox-list">
-          {problems.map((p) => (
-            <label key={p._id} className="checkbox-row">
-              <input type="checkbox" checked={selectedProblems.includes(p._id)} onChange={() => toggleProblem(p._id)} />
-              {p.name} <span className={`badge badge-${p.difficulty?.toLowerCase()}`}>{p.difficulty}</span>
-            </label>
-          ))}
-          {problems.length === 0 && <p className="muted">No existing problems yet.</p>}
-        </div>
-
         <label style={{ marginTop: 18 }}>New problems written just for this contest</label>
         <p className="muted" style={{ marginTop: -6 }}>
           These stay off the public Problems list -- tags and hints hidden -- until the contest is finalized, then they're added
-          to the practice bank continuing the problem numbering.
+          to the practice bank.
         </p>
         {newProblems.map((draft, idx) => (
           <NewProblemEditor

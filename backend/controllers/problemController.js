@@ -2,6 +2,7 @@ const Problem = require('../models/Problem');
 const TestCase = require('../models/TestCase');
 const Submission = require('../models/Submission');
 const User = require('../models/User');
+const Contest = require('../models/Contest');
 
 // Assigns the next sequential display number, continuing from whatever the
 // highest currently-assigned number is. Used both for problems created
@@ -129,4 +130,65 @@ async function createProblem(req, res, next) {
   }
 }
 
-module.exports = { listProblems, getProblem, createProblem, nextProblemNumber };
+// GET /api/problems/:code/edit (admin) - full problem detail including ALL
+// test cases (not just samples), for pre-filling the edit form.
+async function getProblemForEdit(req, res, next) {
+  try {
+    const problem = await Problem.findOne({ code: req.params.code });
+    if (!problem) return res.status(404).json({ message: 'Problem not found' });
+    const testCases = await TestCase.find({ problem: problem._id }).select('input output isSample');
+    res.json({ problem, testCases });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// PUT /api/problems/:code (admin) - update a problem's fields. If
+// `testCases` is provided, it fully replaces the existing set (simplest way
+// to fix a wrong expected-output value or add/remove a case).
+async function updateProblem(req, res, next) {
+  try {
+    const problem = await Problem.findOne({ code: req.params.code });
+    if (!problem) return res.status(404).json({ message: 'Problem not found' });
+
+    const { name, statement, difficulty, tags, hints, timeLimitMs, testCases } = req.body;
+    if (name !== undefined) problem.name = name;
+    if (statement !== undefined) problem.statement = statement;
+    if (difficulty !== undefined) problem.difficulty = difficulty;
+    if (tags !== undefined) problem.tags = tags;
+    if (hints !== undefined) problem.hints = hints;
+    if (timeLimitMs !== undefined) problem.timeLimitMs = timeLimitMs;
+    await problem.save();
+
+    if (Array.isArray(testCases) && testCases.length > 0) {
+      await TestCase.deleteMany({ problem: problem._id });
+      await TestCase.insertMany(
+        testCases.map((tc) => ({ problem: problem._id, input: tc.input, output: tc.output, isSample: !!tc.isSample }))
+      );
+    }
+
+    res.json({ problem });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// DELETE /api/problems/:code (admin) - removes the problem, its test
+// cases, and its reference from any contest it was attached to. Existing
+// submissions against it are left alone as historical records.
+async function deleteProblem(req, res, next) {
+  try {
+    const problem = await Problem.findOne({ code: req.params.code });
+    if (!problem) return res.status(404).json({ message: 'Problem not found' });
+
+    await TestCase.deleteMany({ problem: problem._id });
+    await Contest.updateMany({ problems: problem._id }, { $pull: { problems: problem._id } });
+    await problem.deleteOne();
+
+    res.json({ message: 'Problem deleted' });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { listProblems, getProblem, createProblem, nextProblemNumber, getProblemForEdit, updateProblem, deleteProblem };

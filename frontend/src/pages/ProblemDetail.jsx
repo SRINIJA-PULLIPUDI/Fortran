@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams, useNavigate, Link } from 'react-router-dom';
 import api from '../api/client';
 import CodeEditor from '../components/CodeEditor';
+import { useAuth } from '../context/AuthContext';
 
 const STARTER = {
   python: '# Read input with input(), print your answer\n',
@@ -42,6 +43,11 @@ function HintsPanel({ hints }) {
 
 export default function ProblemDetail() {
   const { code, id: contestId } = useParams();
+  const [searchParams] = useSearchParams();
+  const contestQNumber = searchParams.get('q');
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const [deleting, setDeleting] = useState(false);
   const [problem, setProblem] = useState(null);
   const [samples, setSamples] = useState([]);
   const [language, setLanguage] = useState('python');
@@ -132,6 +138,18 @@ export default function ProblemDetail() {
     }
   }
 
+  async function handleDelete() {
+    if (!window.confirm(`Delete "${problem.name}"? This can't be undone.`)) return;
+    setDeleting(true);
+    try {
+      await api.delete(`/problems/${code}`);
+      navigate('/problems');
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to delete problem');
+      setDeleting(false);
+    }
+  }
+
   if (loadError) return <div className="page error">{loadError}</div>;
   if (!problem) return <div className="page">Loading...</div>;
 
@@ -187,8 +205,23 @@ export default function ProblemDetail() {
               </p>
             )}
             <div className="problem-header">
-              <h2 style={{ marginBottom: 0 }}>{problem.name}</h2>
+              <h2 style={{ marginBottom: 0 }}>
+                {contestId
+                  ? contestQNumber && <span className="muted">Q{contestQNumber}. </span>
+                  : problem.number && <span className="muted">#{problem.number}. </span>}
+                {problem.name}
+              </h2>
               <span className={`badge badge-${problem.difficulty?.toLowerCase()}`}>{problem.difficulty}</span>
+              {user?.role === 'admin' && (
+                <div className="btn-row" style={{ marginTop: 0, marginLeft: 'auto' }}>
+                  <Link to={`/admin/edit-problem/${code}`} className="ghost" style={{ padding: '6px 12px' }}>
+                    Edit
+                  </Link>
+                  <button className="ghost danger" onClick={handleDelete} disabled={deleting} style={{ marginTop: 0 }}>
+                    {deleting ? 'Deleting...' : 'Delete'}
+                  </button>
+                </div>
+              )}
             </div>
             {problem.tags?.length > 0 && (
               <div className="btn-row" style={{ marginTop: 8 }}>
