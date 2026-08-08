@@ -4,41 +4,27 @@
  * simplified-but-reasonable stand-in: better-than-expected performance vs
  * rating gains, worse-than-expected loses, magnitude scaled by a K-factor.
  *
- * standings: [{ userId, rank, solved, totalProblems }] sorted by rank
- *   ascending (1 = best). `solved`/`totalProblems` back the performance
- *   score used below.
+ * standings: [{ userId, score }] where `score` (0..1) is each user's
+ *   contest performance as computed by utils/scoring.js -- it already
+ *   accounts for problems solved, solve speed, wrong-submission penalties,
+ *   and partial credit, so two users who solved the same number of
+ *   problems can still get different rating changes.
  * currentRatings: Map(userId -> rating)
  * Returns Map(userId -> newRating)
- *
- * NOTE: the previous version derived "actual performance" purely from rank
- * relative to other participants (`1 - (rank-1)/(n-1)`), and fell back to a
- * flat 0.5 whenever there was only one participant (n === 1) since there's
- * no one to rank against. That meant a solo participant's rating could
- * never move, no matter how many problems they solved -- 1/1 or 1/2 both
- * left `actualScore === expectedScore === 0.5`, a net-zero update every
- * time. Performance is now grounded in how many of the contest's problems
- * you actually solved (`solved / totalProblems`), which behaves sensibly
- * for both solo and multi-participant contests, and is additionally
- * compared against everyone else's rating (via Elo) when there are other
- * participants to weigh in against.
  */
 function computeRatingUpdates(standings, currentRatings) {
   const K = 32;
   const n = standings.length;
   const updates = new Map();
 
-  standings.forEach(({ userId, solved, totalProblems }) => {
+  standings.forEach(({ userId, score }) => {
     const myRating = currentRatings.get(String(userId)) ?? 1200;
+    const actualScore = score;
 
-    // How well you actually did, as a fraction of the contest's problems.
-    // Solving everything -> 1.0, solving nothing -> 0.0.
-    const actualScore = totalProblems > 0 ? solved / totalProblems : 0;
-
-    // Expected performance: baseline "solving half the problems is what a
-    // 1200-ish rated user is expected to do" (0.5), refined by an Elo-style
-    // comparison against other participants when there are any -- being
-    // rated well above the field raises the bar for what counts as "as
-    // expected", and vice versa.
+    // Expected performance: baseline 0.5 (an average performance is "as
+    // expected"), refined by an Elo-style comparison against other
+    // participants' ratings when there are any -- being rated well above
+    // the field raises the bar for what counts as "as expected".
     let expectedScore = 0.5;
     if (n > 1) {
       let sum = 0;

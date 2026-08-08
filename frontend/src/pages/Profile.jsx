@@ -4,9 +4,68 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import api from '../api/client';
 import StreakHeatmap from '../components/StreakHeatmap';
 import Avatar from '../components/Avatar';
+import { useAuth } from '../context/AuthContext';
+
+function ChangePasswordForm() {
+  const [form, setForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setError('');
+    setSuccess('');
+    if (form.newPassword !== form.confirmPassword) {
+      setError('New passwords do not match');
+      return;
+    }
+    setSaving(true);
+    try {
+      await api.put('/auth/change-password', { currentPassword: form.currentPassword, newPassword: form.newPassword });
+      setSuccess('Password updated.');
+      setForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to update password');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="table-card" style={{ padding: 18, maxWidth: 420 }}>
+      <form onSubmit={handleSubmit} className="form">
+        <label>Current password</label>
+        <input
+          type="password"
+          value={form.currentPassword}
+          onChange={(e) => setForm({ ...form, currentPassword: e.target.value })}
+          required
+        />
+        <label>New password</label>
+        <input type="password" value={form.newPassword} onChange={(e) => setForm({ ...form, newPassword: e.target.value })} required minLength={6} />
+        <label>Confirm new password</label>
+        <input
+          type="password"
+          value={form.confirmPassword}
+          onChange={(e) => setForm({ ...form, confirmPassword: e.target.value })}
+          required
+          minLength={6}
+        />
+        {error && <p className="error">{error}</p>}
+        {success && <p className="success">{success}</p>}
+        <button type="submit" disabled={saving}>
+          {saving ? 'Updating...' : 'Update Password'}
+        </button>
+      </form>
+    </div>
+  );
+}
 
 export default function Profile() {
   const { userId } = useParams();
+  const { user } = useAuth();
+  const isOwnProfile = user?.userId === userId;
   const [profile, setProfile] = useState(null);
   const [error, setError] = useState('');
   const [tab, setTab] = useState('overview');
@@ -70,6 +129,11 @@ export default function Profile() {
         <button className={`tab-item ${tab === 'submissions' ? 'active' : ''}`} onClick={() => setTab('submissions')}>
           Submissions
         </button>
+        {isOwnProfile && (
+          <button className={`tab-item ${tab === 'account' ? 'active' : ''}`} onClick={() => setTab('account')}>
+            Account
+          </button>
+        )}
       </div>
 
       {tab === 'overview' ? (
@@ -119,7 +183,7 @@ export default function Profile() {
             {profile.problemsSolved.length === 0 && <p className="empty-state">No problems solved yet.</p>}
           </div>
         </>
-      ) : (
+      ) : tab === 'submissions' ? (
         <div className="table-card">
           <table className="table">
             <thead>
@@ -145,6 +209,13 @@ export default function Profile() {
           </table>
           {submissions.length === 0 && <p className="empty-state">No submissions to show (only visible for your own account).</p>}
         </div>
+      ) : (
+        isOwnProfile && (
+          <>
+            <h4 className="section-label">Change Password</h4>
+            <ChangePasswordForm />
+          </>
+        )
       )}
     </div>
   );

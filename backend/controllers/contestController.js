@@ -4,18 +4,22 @@ const TestCase = require('../models/TestCase');
 const Submission = require('../models/Submission');
 const User = require('../models/User');
 const { computeRatingUpdates } = require('../utils/rating');
+const { computeContestPerformance } = require('../utils/scoring');
 const { nextProblemNumber } = require('./problemController');
 
 // Ranks a set of users by: contest rating desc, then problems solved desc,
-// then acceptance rate desc. Shared by the global leaderboard and (scoped to
-// participants + contest-specific solve counts) the per-contest leaderboard,
-// per the site's ranking rules.
+// then (when available) total time taken ascending -- faster solves rank
+// higher, matching standard competitive-programming tiebreak convention --
+// then acceptance rate desc as a final fallback.
 function rankUsers(entries) {
   return entries
     .slice()
     .sort((a, b) => {
       if (b.contestRating !== a.contestRating) return b.contestRating - a.contestRating;
       if (b.problemsSolved !== a.problemsSolved) return b.problemsSolved - a.problemsSolved;
+      const aTime = a.totalSolveTimeMs ?? Infinity;
+      const bTime = b.totalSolveTimeMs ?? Infinity;
+      if (aTime !== bTime) return aTime - bTime;
       return b.acceptanceRate - a.acceptanceRate;
     })
     .map((entry, idx) => ({ ...entry, rank: idx + 1 }));
@@ -115,6 +119,9 @@ async function registerForContest(req, res, next) {
 async function getLeaderboard(req, res, next) {
   try {
     const contestId = req.params.id;
+    const contest = await Contest.findById(contestId).select('startTime');
+    if (!contest) return res.status(404).json({ message: 'Contest not found' });
+
     const submissions = await Submission.find({ contest: contestId, verdict: 'Accepted' })
       .populate('user', 'fullName userId contestRating acceptedSubmissions totalSubmissions role')
       .populate('problem', 'name code')
@@ -143,11 +150,13 @@ async function getLeaderboard(req, res, next) {
           acceptanceRate: totalSubs > 0 ? (acceptedSubs / totalSubs) * 100 : 0,
           problemsSolved: 0,
           lastSolvedAt: null,
+          totalSolveTimeMs: 0,
           solvedProblems: [],
         });
       }
       const entry = perUser.get(uid);
       entry.problemsSolved += 1;
+      entry.totalSolveTimeMs += Math.max(0, new Date(s.createdAt) - new Date(contest.startTime));
       entry.solvedProblems.push({ problem: s.problem, solvedAt: s.createdAt });
       if (!entry.lastSolvedAt || s.createdAt > entry.lastSolvedAt) entry.lastSolvedAt = s.createdAt;
     }
@@ -169,18 +178,31 @@ async function finalizeContest(req, res, next) {
     const contest = await Contest.findById(req.params.id);
     if (!contest) return res.status(404).json({ message: 'Contest not found' });
 
-    const submissions = await Submission.find({ contest: contest._id, verdict: 'Accepted' }).populate('user', 'role');
-    const solvedByUser = new Map();
-    submissions.forEach((s) => {
-      if (s.user.role === 'admin') return; // problem setters aren't rated participants
-      const uid = String(s.user._id);
-      solvedByUser.set(uid, (solvedByUser.get(uid) || 0) + 1);
+    // Pull every submission from the contest (not just Accepted ones) so
+    // the scoring engine can see wrong attempts and partial-credit
+    // progress, not just final outcomes.
+    const submissions = await Submission.find({ contest: contest._id }).populate('user', 'role');
+    const scoringInput = submissions
+      .filter((s) => s.user.role !== 'admin') // problem setters aren't rated participants
+      .map((s) => ({
+        user: String(s.user._id),
+        problem: String(s.problem),
+        verdict: s.verdict,
+        passedTestCases: s.passedTestCases,
+        totalTestCases: s.totalTestCases,
+        createdAt: s.createdAt,
+      }));
+
+    const performance = computeContestPerformance({
+      submissions: scoringInput,
+      problemIds: contest.problems.map(String),
+      contestStart: contest.startTime,
+      contestEnd: contest.endTime,
     });
 
-    const totalProblems = contest.problems.length;
-    const standings = Array.from(solvedByUser.entries())
-      .sort((a, b) => b[1] - a[1])
-      .map(([userId, solved], idx) => ({ userId, rank: idx + 1, solved, totalProblems }));
+    const standings = Array.from(performance.entries())
+      .sort((a, b) => b[1].totalPoints - a[1].totalPoints)
+      .map(([userId, perf], idx) => ({ userId, rank: idx + 1, score: perf.score, solved: perf.solved }));
 
     const users = await User.find({ _id: { $in: standings.map((s) => s.userId) } });
     const currentRatings = new Map(users.map((u) => [String(u._id), u.contestRating]));

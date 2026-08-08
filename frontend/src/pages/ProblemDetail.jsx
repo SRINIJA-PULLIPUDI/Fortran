@@ -257,7 +257,6 @@ export default function ProblemDetail() {
                 <option value="java">Java</option>
                 <option value="javascript">JavaScript</option>
               </select>
-              <span className="editor-hint">Tab indents · Shift+Tab outdents</span>
               <div className="editor-actions">
                 <button className="ghost" onClick={handleRun} disabled={running}>
                   {running ? 'Running...' : 'Run'}
