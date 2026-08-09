@@ -2,6 +2,7 @@ const Problem = require('../models/Problem');
 const TestCase = require('../models/TestCase');
 const Submission = require('../models/Submission');
 const User = require('../models/User');
+const Contest = require('../models/Contest');
 const { judgeSubmission, runAdHoc } = require('../services/codeExecutor');
 const { checkPlagiarism } = require('../services/plagiarismChecker');
 const { recordActivity } = require('../utils/streak');
@@ -49,6 +50,13 @@ async function submitSolution(req, res, next) {
 
     const problem = await Problem.findOne({ code: problemCode });
     if (!problem) return res.status(404).json({ message: 'Problem not found' });
+
+    if (contestId) {
+      const contest = await Contest.findById(contestId).select('endTime');
+      if (contest && new Date() > new Date(contest.endTime)) {
+        return res.status(403).json({ message: 'This contest has ended. Submissions are no longer accepted.', contestEnded: true });
+      }
+    }
 
     const submission = await Submission.create({
       user: req.user._id,

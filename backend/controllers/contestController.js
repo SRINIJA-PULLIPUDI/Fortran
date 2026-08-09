@@ -97,6 +97,18 @@ async function createContest(req, res, next) {
   }
 }
 
+// GET /api/contests/:id - single contest (used by the problem page to know
+// contest timing for the live countdown while solving a problem)
+async function getContest(req, res, next) {
+  try {
+    const contest = await Contest.findById(req.params.id).populate('problems', 'name code number difficulty isPractice');
+    if (!contest) return res.status(404).json({ message: 'Contest not found' });
+    res.json({ contest });
+  } catch (err) {
+    next(err);
+  }
+}
+
 // POST /api/contests/:id/register - join a contest
 async function registerForContest(req, res, next) {
   try {
@@ -236,4 +248,4 @@ async function finalizeContest(req, res, next) {
   }
 }
 
-module.exports = { listContests, createContest, registerForContest, getLeaderboard, finalizeContest };
+module.exports = { listContests, getContest, createContest, registerForContest, getLeaderboard, finalizeContest };

@@ -41,6 +41,49 @@ function HintsPanel({ hints }) {
   );
 }
 
+function formatDuration(ms) {
+  if (ms <= 0) return '00:00:00';
+  const totalSeconds = Math.floor(ms / 1000);
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+  const pad = (n) => String(n).padStart(2, '0');
+  return h > 0 ? `${pad(h)}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
+}
+
+// Ticks every second while a contest is live, showing time remaining. Calls
+// onEnded once, the moment the countdown hits zero, so the parent can lock
+// out the Submit button without waiting on a server round-trip.
+function ContestCountdown({ endTime, onEnded }) {
+  const [now, setNow] = useState(Date.now());
+  const firedRef = useRef(false);
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const remainingMs = new Date(endTime).getTime() - now;
+
+  useEffect(() => {
+    if (remainingMs <= 0 && !firedRef.current) {
+      firedRef.current = true;
+      onEnded();
+    }
+  }, [remainingMs, onEnded]);
+
+  if (remainingMs <= 0) {
+    return <p className="hint" style={{ marginBottom: 10, color: 'var(--fail)' }}>Contest has ended — submissions are no longer accepted.</p>;
+  }
+
+  return (
+    <p className="hint" style={{ marginBottom: 10 }}>
+      Solving as part of a live contest — topic tags and hints stay hidden until the contest ends.
+      {' '}Time remaining: <strong>{formatDuration(remainingMs)}</strong>
+    </p>
+  );
+}
+
 export default function ProblemDetail() {
   const { code, id: contestId } = useParams();
   const [searchParams] = useSearchParams();
@@ -65,6 +108,8 @@ export default function ProblemDetail() {
   const [runOutput, setRunOutput] = useState(null);
   const [running, setRunning] = useState(false);
   const [loadError, setLoadError] = useState('');
+  const [contest, setContest] = useState(null);
+  const [contestEnded, setContestEnded] = useState(false);
 
   useEffect(() => {
     setProblem(null);
@@ -81,6 +126,21 @@ export default function ProblemDetail() {
       });
     return () => clearInterval(pollRef.current);
   }, [code]);
+
+  useEffect(() => {
+    if (!contestId) {
+      setContest(null);
+      setContestEnded(false);
+      return;
+    }
+    api
+      .get(`/contests/${contestId}`)
+      .then((res) => {
+        setContest(res.data.contest);
+        setContestEnded(new Date(res.data.contest.endTime).getTime() <= Date.now());
+      })
+      .catch(() => {});
+  }, [contestId]);
 
   useEffect(() => {
     if (tab === 'submissions') {
@@ -199,11 +259,7 @@ export default function ProblemDetail() {
       ) : (
         <div className="problem-detail-grid">
           <div>
-            {contestId && (
-              <p className="hint" style={{ marginBottom: 10 }}>
-                Solving as part of a live contest — topic tags and hints stay hidden until the contest ends.
-              </p>
-            )}
+            {contestId && contest && <ContestCountdown endTime={contest.endTime} onEnded={() => setContestEnded(true)} />}
             <div className="problem-header">
               <h2 style={{ marginBottom: 0 }}>
                 {contestId
@@ -261,8 +317,8 @@ export default function ProblemDetail() {
                 <button className="ghost" onClick={handleRun} disabled={running}>
                   {running ? 'Running...' : 'Run'}
                 </button>
-                <button onClick={handleSubmit} disabled={submitting}>
-                  {submitting ? 'Judging...' : 'Submit'}
+                <button onClick={handleSubmit} disabled={submitting || contestEnded} title={contestEnded ? 'This contest has ended' : undefined}>
+                  {contestEnded ? 'Contest Ended' : submitting ? 'Judging...' : 'Submit'}
                 </button>
               </div>
             </div>
