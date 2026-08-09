@@ -16,7 +16,7 @@ export default function ContestDetail() {
     api.get('/contests').then((res) => {
       const c = res.data.contests.find((x) => x._id === id);
       setContest(c);
-      if (c && user) setJoined(c.participants?.some((p) => p === user.id || p._id === user.id));
+      if (c && user) setJoined(c.participants?.some((p) => String(p) === String(user.id)));
     });
     loadLeaderboard();
   }, [id, user]);

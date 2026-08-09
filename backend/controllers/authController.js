@@ -54,7 +54,8 @@ async function login(req, res, next) {
 
 // GET /api/auth/me
 async function me(req, res) {
-  res.json({ user: req.user });
+  const u = req.user;
+  res.json({ user: { id: u._id, fullName: u.fullName, userId: u.userId, email: u.email, role: u.role } });
 }
 
 // PUT /api/auth/change-password
